@@ -179,7 +179,7 @@ impl App for PlotApp {
                                     egui::Rounding::same(0.0),
                                     color,
                                 );
-                                //break; // Exit the loop as we found a match
+                                break; // Exit the loop as we found a match
                             }
                         }
                     }
