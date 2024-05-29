@@ -18,8 +18,8 @@ struct LedCoordinate {
 #[derive(Debug)]
 struct RunRace {
     date: DateTime<Utc>,
-    x: f64,
-    y: f64,
+    x_led: f64,
+    y_led: f64,
     time_delta: u64, // New field to hold the time delta
 }
 
@@ -32,8 +32,8 @@ impl<'de> Deserialize<'de> for RunRace {
         #[derive(Deserialize)]
         struct RunRaceHelper {
             date: String,
-            x: f64,
-            y: f64,
+            x_led: f64,
+            y_led: f64,
             time_delta: Option<u64>, // Deserialize time_delta from CSV, allowing for missing values
         }
 
@@ -43,8 +43,8 @@ impl<'de> Deserialize<'de> for RunRace {
 
         Ok(RunRace {
             date,
-            x: helper.x,
-            y: helper.y,
+            x_led: helper.x_led,
+            y_led: helper.y_led,
             time_delta: helper.time_delta.unwrap_or(0), // Default to 0 if missing
         })
     }
@@ -167,8 +167,8 @@ impl App for PlotApp {
                     for i in 0..self.current_index {
                         if let Some(run_data) = dataset.get(i) {
                             println!("Checking car {} at ({}, {}) against LED ({}, {})",
-                                     dataset_idx, run_data.x, run_data.y, coord.x_led, coord.y_led); // Debug print
-                            if run_data.x == coord.x_led && run_data.y == coord.y_led {
+                                     dataset_idx, run_data.x_led, run_data.y_led, coord.x_led, coord.y_led); // Debug print
+                            if run_data.x_led == coord.x_led && run_data.y_led == coord.y_led {
                                 println!("Match found: Drawing color {:?} for car {} at coordinate ({}, {})",
                                          color, dataset_idx, coord.x_led, coord.y_led); // Debug print
                                 painter.rect_filled(
@@ -179,7 +179,7 @@ impl App for PlotApp {
                                     egui::Rounding::same(0.0),
                                     color,
                                 );
-                                break; // Exit the loop as we found a match
+                                //break; // Exit the loop as we found a match
                             }
                         }
                     }
