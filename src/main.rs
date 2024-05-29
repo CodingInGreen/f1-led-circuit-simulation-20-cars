@@ -17,9 +17,9 @@ struct LedCoordinate {
 
 #[derive(Debug)]
 struct RunRace {
-    timestamp: DateTime<Utc>,
-    x_data: f64,
-    y_data: f64,
+    date: DateTime<Utc>,
+    x: f64,
+    y: f64,
     time_delta: u64, // New field to hold the time delta
 }
 
@@ -31,37 +31,38 @@ impl<'de> Deserialize<'de> for RunRace {
     {
         #[derive(Deserialize)]
         struct RunRaceHelper {
-            timestamp: String,
-            x_data: f64,
-            y_data: f64,
-            time_delta: u64, // Deserialize time_delta from CSV
+            date: String,
+            x: f64,
+            y: f64,
+            time_delta: Option<u64>, // Deserialize time_delta from CSV, allowing for missing values
         }
 
         let helper = RunRaceHelper::deserialize(deserializer)?;
-        let timestamp = Utc.datetime_from_str(&helper.timestamp, "%+")
+        let date = Utc.datetime_from_str(&helper.date, "%+")
             .map_err(SerdeError::custom)?;
 
         Ok(RunRace {
-            timestamp,
-            x_data: helper.x_data,
-            y_data: helper.y_data,
-            time_delta: helper.time_delta,
+            date,
+            x: helper.x,
+            y: helper.y,
+            time_delta: helper.time_delta.unwrap_or(0), // Default to 0 if missing
         })
     }
 }
 
 struct PlotApp {
     coordinates: Vec<LedCoordinate>,
-    run_race_data: Vec<RunRace>,
+    run_race_data: Vec<Vec<RunRace>>, // Changed to a vector of vectors to hold multiple datasets
     start_time: Instant,
     start_datetime: DateTime<Utc>,
     current_index: usize,
     race_started: bool,
     next_update_time: DateTime<Utc>, // New field to hold the next update time
+    colors: Vec<egui::Color32>, // Colors for each dataset
 }
 
 impl PlotApp {
-    fn new(coordinates: Vec<LedCoordinate>, run_race_data: Vec<RunRace>) -> Self {
+    fn new(coordinates: Vec<LedCoordinate>, run_race_data: Vec<Vec<RunRace>>, colors: Vec<egui::Color32>) -> Self {
         let mut app = Self {
             coordinates,
             run_race_data,
@@ -70,6 +71,7 @@ impl PlotApp {
             current_index: 0,
             race_started: false,
             next_update_time: Utc::now(), // Initialize next_update_time
+            colors,
         };
         app.calculate_next_update_time(); // Calculate initial next_update_time
         app
@@ -84,7 +86,7 @@ impl PlotApp {
     }
 
     fn calculate_next_update_time(&mut self) {
-        if let Some(run_data) = self.run_race_data.get(self.current_index) {
+        if let Some(run_data) = self.run_race_data.get(0).and_then(|data| data.get(self.current_index)) {
             self.next_update_time = Utc::now() + Duration::from_millis(run_data.time_delta);
         }
     }
@@ -107,7 +109,7 @@ impl App for PlotApp {
         if self.race_started {
             let current_time = Utc::now();
 
-            if let Some(run_data) = self.run_race_data.get(self.current_index) {
+            if let Some(run_data) = self.run_race_data.get(0).and_then(|data| data.get(self.current_index)) {
                 if current_time >= self.next_update_time {
                     self.current_index += 1;
                     self.calculate_next_update_time(); // Calculate next update time for the next data point
@@ -115,18 +117,16 @@ impl App for PlotApp {
             }
         }
 
-
-
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                // Add the timestamp field in the center of the menu bar
+                // Add the date field in the center of the menu bar
                 ui.separator(); // Align items to center
-                if let Some(run_data) = self.run_race_data.get(self.current_index) {
-                    let timestamp_str = run_data.timestamp.format("%H:%M:%S%.3f").to_string();
-                    ui.label(timestamp_str);
+                if let Some(run_data) = self.run_race_data.get(0).and_then(|data| data.get(self.current_index)) {
+                    let date_str = run_data.date.format("%H:%M:%S%.3f").to_string();
+                    ui.label(date_str);
                 }
                 ui.separator(); // Align items to center
-        
+
                 if ui.button("START").clicked() {
                     self.race_started = true;
                     self.start_time = Instant::now();
@@ -141,21 +141,10 @@ impl App for PlotApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            // First, draw all LEDs as black
             for coord in &self.coordinates {
-                // Draw LEDs based on coordinates
                 let norm_x = ((coord.x_led - min_x) / width) as f32 * ui.available_width();
                 let norm_y = ui.available_height() - (((coord.y_led - min_y) / height) as f32 * ui.available_height());
-                let mut color = egui::Color32::BLACK;
-
-                for i in 0..self.current_index {
-                    if let Some(run_data) = self.run_race_data.get(i) {
-                        if run_data.x_data == coord.x_led && run_data.y_data == coord.y_led {
-                            color = egui::Color32::GREEN;
-                        } else {
-                            color = egui::Color32::BLACK;
-                        }
-                    }
-                }
 
                 painter.rect_filled(
                     egui::Rect::from_min_size(
@@ -163,8 +152,34 @@ impl App for PlotApp {
                         egui::vec2(20.0, 20.0),
                     ),
                     egui::Rounding::same(0.0),
-                    color,
+                    egui::Color32::BLACK,
                 );
+            }
+
+            // Then, update LEDs with car colors if there's a match
+            for coord in &self.coordinates {
+                let norm_x = ((coord.x_led - min_x) / width) as f32 * ui.available_width();
+                let norm_y = ui.available_height() - (((coord.y_led - min_y) / height) as f32 * ui.available_height());
+
+                for (dataset_idx, dataset) in self.run_race_data.iter().enumerate() {
+                    let color = self.colors[dataset_idx];
+
+                    for i in 0..self.current_index {
+                        if let Some(run_data) = dataset.get(i) {
+                            if run_data.x == coord.x_led && run_data.y == coord.y_led {
+                                painter.rect_filled(
+                                    egui::Rect::from_min_size(
+                                        egui::pos2(norm_x, norm_y),
+                                        egui::vec2(20.0, 20.0),
+                                    ),
+                                    egui::Rounding::same(0.0),
+                                    color,
+                                );
+                                break; // Exit the loop as we found a match
+                            }
+                        }
+                    }
+                }
             }
         });
 
@@ -175,9 +190,65 @@ impl App for PlotApp {
 
 fn main() -> eframe::Result<()> {
     let coordinates = read_coordinates("led_coords.csv").expect("Error reading CSV");
-    let run_race_data = read_race_data("modified_race_data.csv").expect("Error reading CSV");
 
-    let app = PlotApp::new(coordinates, run_race_data);
+    // Specify file paths for multiple datasets
+    let dataset_paths = vec![
+        "time_delta_albon.csv",
+        "time_delta_alonso.csv",
+        "time_delta_bottas.csv",
+        "time_delta_gasley.csv",
+        "time_delta_guanyu.csv",
+        "time_delta_hamilton.csv",
+        "time_delta_hulkenberg.csv",
+        "time_delta_lawson.csv",
+        "time_delta_leclerc.csv",
+        "time_delta_magnussen.csv",
+        "time_delta_norris.csv",
+        "time_delta_ocon.csv",
+        "time_delta_perez.csv",
+        "time_delta_piastri.csv",
+        "time_delta_russell.csv",
+        "time_delta_sainz.csv",
+        "time_delta_sargeant.csv",
+        "time_delta_stroll.csv",
+        "time_delta_tsunoda.csv",
+        "time_delta_verstappen.csv",
+    ];
+
+
+    // Read multiple datasets
+    let mut run_race_data = Vec::new();
+    for file_path in dataset_paths {
+        let data = read_race_data(file_path).expect("Error reading CSV");
+        run_race_data.push(data);
+    }
+
+    // Define colors for each dataset
+    let colors = vec![
+        egui::Color32::from_rgb(255, 0, 0),    // Red
+        egui::Color32::from_rgb(0, 255, 0),    // Green
+        egui::Color32::from_rgb(0, 0, 255),    // Blue
+        egui::Color32::from_rgb(255, 255, 0),  // Yellow
+        egui::Color32::from_rgb(255, 0, 255),  // Magenta
+        egui::Color32::from_rgb(0, 255, 255),  // Cyan
+        egui::Color32::from_rgb(128, 0, 0),    // Maroon
+        egui::Color32::from_rgb(0, 128, 0),    // Dark Green
+        egui::Color32::from_rgb(0, 0, 128),    // Navy
+        egui::Color32::from_rgb(128, 128, 0),  // Olive
+        egui::Color32::from_rgb(128, 0, 128),  // Purple
+        egui::Color32::from_rgb(128, 0, 128),  // Purple
+        egui::Color32::from_rgb(0, 128, 128),  // Teal
+        egui::Color32::from_rgb(192, 192, 192), // Silver
+        egui::Color32::from_rgb(128, 128, 128), // Gray
+        egui::Color32::from_rgb(255, 165, 0),  // Orange
+        egui::Color32::from_rgb(255, 20, 147), // Deep Pink
+        egui::Color32::from_rgb(75, 0, 130),   // Indigo
+        egui::Color32::from_rgb(255, 215, 0),  // Gold
+        egui::Color32::from_rgb(0, 191, 255),  // Deep Sky Blue
+        egui::Color32::from_rgb(255, 105, 180) // Hot Pink
+    ];
+
+    let app = PlotApp::new(coordinates, run_race_data, colors);
 
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
@@ -200,7 +271,13 @@ fn read_coordinates(file_path: &str) -> Result<Vec<LedCoordinate>, Box<dyn Error
 fn read_race_data(file_path: &str) -> Result<Vec<RunRace>, Box<dyn Error>> {
     let mut rdr = ReaderBuilder::new().from_path(file_path)?;
     let mut run_race_data = Vec::new();
+    let mut is_first_row = true;
+
     for result in rdr.deserialize() {
+        if is_first_row {
+            is_first_row = false;
+            continue; // Skip the first row
+        }
         let record: RunRace = result?;
         run_race_data.push(record);
     }
