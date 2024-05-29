@@ -166,9 +166,13 @@ impl App for PlotApp {
 
                     for i in 0..self.current_index {
                         if let Some(run_data) = dataset.get(i) {
+                            println!("Checking car {} at ({}, {}) against LED ({}, {})",
+                                     dataset_idx, run_data.x, run_data.y, coord.x_led, coord.y_led); // Debug print
                             if run_data.x == coord.x_led && run_data.y == coord.y_led {
+                                println!("Match found: Drawing color {:?} for car {} at coordinate ({}, {})",
+                                         color, dataset_idx, coord.x_led, coord.y_led); // Debug print
                                 painter.rect_filled(
-                                    egui::Rect::from_min_size(
+                                     egui::Rect::from_min_size(
                                         egui::pos2(norm_x, norm_y),
                                         egui::vec2(20.0, 20.0),
                                     ),
@@ -183,6 +187,7 @@ impl App for PlotApp {
             }
         });
 
+
         // Request a repaint to ensure continuous updates
         ctx.request_repaint();
     }
@@ -193,26 +198,26 @@ fn main() -> eframe::Result<()> {
 
     // Specify file paths for multiple datasets
     let dataset_paths = vec![
-        "time_delta_albon.csv",
-        "time_delta_alonso.csv",
-        "time_delta_bottas.csv",
-        "time_delta_gasley.csv",
-        "time_delta_guanyu.csv",
-        "time_delta_hamilton.csv",
-        "time_delta_hulkenberg.csv",
-        "time_delta_lawson.csv",
-        "time_delta_leclerc.csv",
-        "time_delta_magnussen.csv",
-        "time_delta_norris.csv",
-        "time_delta_ocon.csv",
-        "time_delta_perez.csv",
-        "time_delta_piastri.csv",
-        "time_delta_russell.csv",
-        "time_delta_sainz.csv",
-        "time_delta_sargeant.csv",
-        "time_delta_stroll.csv",
-        "time_delta_tsunoda.csv",
-        "time_delta_verstappen.csv",
+        "time_delta_albon_start.csv",
+        "time_delta_alonso_start.csv",
+        "time_delta_bottas_start.csv",
+        "time_delta_gasley_start.csv",
+        "time_delta_guanyu_start.csv",
+        "time_delta_hamilton_start.csv",
+        "time_delta_hulkenberg_start.csv",
+        "time_delta_lawson_start.csv",
+        "time_delta_leclerc_start.csv",
+        "time_delta_magnussen_start.csv",
+        "time_delta_norris_start.csv",
+        "time_delta_ocon_start.csv",
+        "time_delta_perez_start.csv",
+        "time_delta_piastri_start.csv",
+        "time_delta_russell_start.csv",
+        "time_delta_sainz_start.csv",
+        "time_delta_sargeant_start.csv",
+        "time_delta_stroll_start.csv",
+        "time_delta_tsunoda_start.csv",
+        "time_delta_verstappen_start.csv",
     ];
 
 
@@ -222,6 +227,15 @@ fn main() -> eframe::Result<()> {
         let data = read_race_data(file_path).expect("Error reading CSV");
         run_race_data.push(data);
     }
+
+    // Debug print to check data
+    for (i, data) in run_race_data.iter().enumerate() {
+        println!("Dataset {}: {} records", i, data.len());
+        for record in data.iter().take(5) { // Print the first 5 records of each dataset
+            println!("{:?}", record);
+        }
+    }
+
 
     // Define colors for each dataset
     let colors = vec![
